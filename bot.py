@@ -2,6 +2,7 @@ import logging
 import vk_api
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.helpers import escape_markdown
 
 # Токены
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
@@ -45,10 +46,10 @@ async def send_post(update: Update) -> None:
     global current_index, posts
     if posts and 0 <= current_index < len(posts):
         group_name, post, city = posts[current_index]
-        text = post['text']
+        text = escape_markdown(post['text'], version=2)
         post_id = post['id']
         post_link = f"https://vk.com/wall-{group_name}_{post_id}"
-        post_info = f"*Группа:* {group_name} (ID: {post_id})\n*Город:* {city}\n{text}"
+        post_info = f"*Группа:* {escape_markdown(group_name, version=2)} (ID: {post_id})\n*Город:* {escape_markdown(city, version=2)}\n{text}"
         
         # Создание кнопок: убираем «влево» на первом посте и «вправо» на последнем
         keyboard = []
@@ -62,7 +63,7 @@ async def send_post(update: Update) -> None:
         keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='Markdown')
+        await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='MarkdownV2')
     else:
         await update.message.reply_text("Постов больше нет.")
 
