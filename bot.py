@@ -35,9 +35,6 @@ def get_posts_from_groups(count=10):
     return all_posts
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Нажмите /get_posts, чтобы получить посты из ВК.")
-
-async def get_posts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index
     count = 5
     posts = get_posts_from_groups(count=count)
@@ -51,13 +48,19 @@ async def send_post(update: Update) -> None:
         text = post['text']
         post_id = post['id']
         post_link = f"https://vk.com/wall-{group_name}_{post_id}"
-        post_info = f"**Группа:** {group_name} (ID: {post_id})\n**Город:** {city}\n{text}"
+        post_info = f"*Группа:* {group_name} (ID: {post_id})\n*Город:* {city}\n{text}"
         
-        keyboard = [
-            [InlineKeyboardButton("⬅", callback_data='left'), 
-             InlineKeyboardButton("⮕", callback_data='right')],
-            [InlineKeyboardButton("Открыть пост", url=post_link)]
-        ]
+        # Создание кнопок: убираем «влево» на первом посте и «вправо» на последнем
+        keyboard = []
+        if current_index > 0:
+            keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
+        if current_index < len(posts) - 1:
+            if keyboard:
+                keyboard[0].append(InlineKeyboardButton("⮕", callback_data='right'))
+            else:
+                keyboard.append([InlineKeyboardButton("⮕", callback_data='right')])
+        keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='Markdown')
     else:
@@ -68,23 +71,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     
-    if query.data == 'left':
-        if current_index > 0:
-            current_index -= 1
-            await send_post(query)
-        else:
-            await query.edit_message_text("Это первый пост.")
-    elif query.data == 'right':
-        if current_index < len(posts) - 1:
-            current_index += 1
-            await send_post(query)
-        else:
-            await query.edit_message_text("Это последний пост.")
+    if query.data == 'left' and current_index > 0:
+        current_index -= 1
+    elif query.data == 'right' and current_index < len(posts) - 1:
+        current_index += 1
+
+    await send_post(query)
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("get_posts", get_posts))
     app.add_handler(CallbackQueryHandler(button))
     app.run_polling()
 
