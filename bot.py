@@ -49,7 +49,12 @@ async def send_post(update: Update) -> None:
         text = escape_markdown(post['text'], version=2)
         post_id = post['id']
         post_link = f"https://vk.com/wall-{group_name}_{post_id}"
-        post_info = f"*Группа:* {escape_markdown(group_name, version=2)} (ID: {post_id})\n*Город:* {escape_markdown(city, version=2)}\n{text}"
+        
+        post_info = (
+            f"*Группа:* {escape_markdown(group_name, version=2)} "
+            f"(ID: {escape_markdown(str(post_id), version=2)})\n"
+            f"*Город:* {escape_markdown(city, version=2)}\n{text}"
+        )
         
         # Создание кнопок: убираем «влево» на первом посте и «вправо» на последнем
         keyboard = []
