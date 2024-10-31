@@ -86,11 +86,20 @@ async def send_post(update: Update) -> None:
     global current_index, posts, last_message_id
     if posts and 0 <= current_index < len(posts):
         group_name, post, city = posts[current_index]
+        
+        # Проверка на существование группы
+        if current_index < len(groups):
+            group_id = groups[current_index][1]
+        else:
+            logger.error("current_index выходит за пределы списка groups.")
+            await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
+            return
+
         text = escape_markdown(post['text'], version=2)
         post_id = post['id']
-        group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
         
+        # Добавляем информацию о животном и фото
         animal_type = post.get('animal_type', 'Неизвестно')
         post_info = (
             f"Группа: {escape_markdown(group_name, version=2)}\n"
@@ -98,12 +107,14 @@ async def send_post(update: Update) -> None:
             f"Тип животного: {escape_markdown(animal_type, version=2)}\n{text}"
         )
         
+        # Удаление предыдущего сообщения
         if last_message_id:
             try:
                 await update.message.bot.delete_message(update.effective_chat.id, last_message_id)
             except Exception as e:
                 logger.warning("Не удалось удалить предыдущее сообщение: %s", e)
 
+        # Кнопки
         keyboard = []
         if current_index > 0:
             keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
@@ -115,6 +126,7 @@ async def send_post(update: Update) -> None:
         keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
+        # Отправка фото вместе с текстом, если URL изображения найден
         image_url = post.get('image_url')
         if image_url:
             response = requests.get(image_url)
@@ -128,7 +140,7 @@ async def send_post(update: Update) -> None:
         else:
             message = await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='MarkdownV2')
         
-        last_message_id = message.message_id
+        last_message_id = message.message_id  # Сохранение ID последнего сообщения
     else:
         await update.message.reply_text("Постов больше нет.")
 
