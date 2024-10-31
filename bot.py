@@ -69,6 +69,7 @@ def get_posts_from_groups(count=5000):
                     all_posts.append((group_name, post, city, vector))
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
+    logger.info(f"Всего найдено постов: {len(all_posts)}")  # Логируем общее количество найденных постов
     return all_posts
 
 async def send_similar_posts(update: Update, photo_vector: np.ndarray):
@@ -110,6 +111,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     posts = get_posts_from_groups(count=5000)
     image_data = [post[3] for post in posts]  # Получаем только векторы
     current_index = 0
+
+    # Логируем количество найденных векторов
+    logger.info(f"Найдено векторов изображений: {len(image_data)}")
+    
+    if not image_data:
+        await update.message.reply_text("Не удалось найти посты с изображениями.")
+    else:
+        await update.message.reply_text("Посты успешно найдены, вы можете загрузить фото для поиска.")
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
