@@ -10,6 +10,7 @@ from io import BytesIO
 import torch
 from torchvision import transforms
 from torchvision.models import resnet18
+import numpy as np
 
 VK_API_TOKEN = 'your_vk_api_token'
 TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
