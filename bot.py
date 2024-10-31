@@ -4,15 +4,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.helpers import escape_markdown
 
-# Токены
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 
-# Настройка логирования
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Группы для поиска постов
 groups = [
     ("lostpets", "39991594", "Вологодская обл."),
     ("public183021083", "183021083", "Тобольск"),
@@ -48,15 +45,15 @@ async def send_post(update: Update) -> None:
         group_name, post, city = posts[current_index]
         text = escape_markdown(post['text'], version=2)
         post_id = post['id']
-        post_link = f"https://vk.com/wall-{group_name}_{post_id}"
         
-        # Убираем специальные символы, чтобы избежать ошибок
+        group_id = groups[current_index][1]
+        post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+        
         post_info = (
             f"Группа: {escape_markdown(group_name, version=2)}\n"
             f"Город: {escape_markdown(city, version=2)}\n{text}"
         )
         
-        # Создание кнопок: убираем «влево» на первом посте и «вправо» на последнем
         keyboard = []
         if current_index > 0:
             keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
