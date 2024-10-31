@@ -1,21 +1,30 @@
 import logging
 import vk_api
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+import requests
+from bs4 import BeautifulSoup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.helpers import escape_markdown
+from PIL import Image
+from io import BytesIO
+import torch
+from torchvision import transforms
+from torchvision.models import resnet18
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 
-# Список слов для поиска
-SEARCH_TERMS = ["потеря", "питомец", "собака", "кошка", "ищем", "помогите", "найден", "пропал"]
-
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Указываем только группу lostpets
+# Список слов для поиска
+search_keywords = ['собака', 'кошка', 'потерялась', 'пропала', 'ищу', 'помогите']
+
 groups = [
     ("lostpets", "39991594", "Вологодская обл."),
+    ("public183021083", "183021083", "Тобольск"),
 ]
 
 vk_session = vk_api.VkApi(token=VK_API_TOKEN)
@@ -23,28 +32,65 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
+last_message_id = None
 
-def get_posts_from_groups(count=100):  # Установите лимит по умолчанию
+model = resnet18(weights='DEFAULT')  # Используйте weights вместо pretrained
+model.eval()
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+image_vectors = []  # Для хранения векторов изображений
+image_data = []  # Для хранения данных постов с изображениями
+
+def get_image_vector(image_url):
+    response = requests.get(image_url)
+    image = Image.open(BytesIO(response.content)).convert("RGB")
+    image = transform(image).unsqueeze(0)
+    
+    with torch.no_grad():
+        vector = model(image).numpy()
+    
+    return vector.flatten()  # Плоский вектор для сравнения
+
+def get_image_url_from_post(post_text):
+    soup = BeautifulSoup(post_text, "html.parser")
+    img_tags = soup.find_all("img")
+    if img_tags:
+        return img_tags[0]["src"]  # Возвращаем первый найденный URL изображения
+    return None
+
+def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
         try:
-            logger.info("Получение постов из группы %s (ID: %s)...", group_name, group_id)
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
-                if 'text' in post and post['text']:  # Убедитесь, что текст поста существует
-                    logger.debug("Текст поста: %s", post['text'])  # Логируем текст поста
-                    # Проверяем, есть ли ключевые слова в тексте поста
-                    if any(term in post['text'].lower() for term in SEARCH_TERMS):
-                        all_posts.append((group_name, post, city))  # Сохраняем только посты
-                        logger.info("Найден подходящий пост: %s", post['text'])
-            logger.info("Получено %d постов из группы %s.", len(response['items']), group_name)
+                image_url = get_image_url_from_post(post['text'])
+                if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
+                    animal_type = classify_image(image_url) if image_url else 'Неизвестно'
+                    vector = get_image_vector(image_url) if image_url else None
+                    post['animal_type'] = animal_type
+                    post['image_url'] = image_url
+                    all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
-async def send_found_posts(update: Update, found_posts):
-    if found_posts:
-        for group_name, post, city in found_posts:
+async def send_similar_posts(update: Update, photo_vector: np.ndarray):
+    similar_posts = []
+    
+    for (group_name, post, city, vector) in image_data:
+        if vector is not None:  # Проверка на наличие вектора
+            similarity = cosine_similarity([photo_vector], [vector])
+            if similarity >= 0.8:  # Порог схожести, вы можете изменить его
+                similar_posts.append((group_name, post, city, similarity[0][0]))
+    
+    # Отправка похожих постов
+    if similar_posts:
+        for group_name, post, city, similarity in similar_posts:
             text = escape_markdown(post['text'], version=2)
             post_id = post['id']
             group_id = groups[current_index][1]
@@ -52,24 +98,34 @@ async def send_found_posts(update: Update, found_posts):
             post_info = (
                 f"Группа: {escape_markdown(group_name, version=2)}\n"
                 f"Город: {escape_markdown(city, version=2)}\n"
-                f"Ссылка на пост: {post_link}\n"
-                f"Текст: {text}"
+                f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
+                f"Схожесть: {similarity:.2%}\n{text}\n{post_link}"
             )
             await update.message.reply_text(post_info)
-    else:
-        await update.message.reply_text("Подходящие посты не найдены.")
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Получение фото из сообщения
+    photo_file = await update.message.photo[-1].get_file()
+    photo_url = photo_file.file_path
+    
+    # Получение вектора загруженного фото
+    photo_vector = get_image_vector(photo_url)
+    
+    # Поиск похожих постов
+    await send_similar_posts(update, photo_vector)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global posts, current_index, image_data
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
-    found_posts = get_posts_from_groups(count=100)  # Поиск только в lostpets
-    logger.info("Всего найдено постов: %d", len(found_posts))
-    
-    # Отправляем найденные посты
-    await send_found_posts(update, found_posts)
+    posts = get_posts_from_groups(count=5000)
+    image_data = [(post[0], post[1], post[2], post[3]) for post in posts if post[3] is not None]  # Получаем только векторы
+    current_index = 0
+    await send_post(update)
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # Добавьте обработчик фото
     app.run_polling()
 
 if __name__ == '__main__':
