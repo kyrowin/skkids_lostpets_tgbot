@@ -3,15 +3,13 @@ import vk_api
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.helpers import escape_markdown
 from PIL import Image
 from io import BytesIO
 import torch
 from torchvision import transforms
 from torchvision.models import resnet18
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 VK_API_TOKEN = 'your_vk_api_token'
 TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
