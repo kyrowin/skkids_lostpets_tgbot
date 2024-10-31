@@ -114,6 +114,24 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Поиск похожих постов
     await send_similar_posts(update, photo_vector)
 
+async def send_post(update: Update):
+    if current_index < len(posts):
+        post = posts[current_index]
+        text = escape_markdown(post[1]['text'], version=2)
+        post_id = post[1]['id']
+        group_id = groups[current_index][1]
+        post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+        post_info = (
+            f"Группа: {escape_markdown(post[0], version=2)}\n"
+            f"Город: {escape_markdown(post[2], version=2)}\n"
+            f"Тип животного: {escape_markdown(post[1].get('animal_type', 'Неизвестно'), version=2)}\n"
+            f"{text}\n{post_link}"
+        )
+        await update.message.reply_text(post_info)
+        current_index += 1
+    else:
+        await update.message.reply_text("Не найдено больше постов.")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index, image_data
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
