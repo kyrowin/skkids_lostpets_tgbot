@@ -10,9 +10,11 @@ from io import BytesIO
 import torch
 from torchvision import transforms
 from torchvision.models import resnet18
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
-VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
-TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
+VK_API_TOKEN = 'your_vk_api_token'
+TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,9 +29,9 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
-last_message_id = None  # Отслеживание последнего сообщения для удаления
+last_message_id = None
 
-model = resnet18(weights='DEFAULT')  # Используем новые веса
+model = resnet18(weights='DEFAULT')  # Используйте weights вместо pretrained
 model.eval()
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -37,123 +39,83 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-def classify_image(image_url):
-    try:
-        response = requests.get(image_url)
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-        image = transform(image).unsqueeze(0)
-        
-        with torch.no_grad():
-            output = model(image)
-        
-        _, predicted = output.max(1)
-        return "Кошка" if predicted.item() == 0 else "Собака"
-    except Exception as e:
-        logger.error("Ошибка классификации изображения: %s", e)
-        return "Неизвестно"
+image_vectors = []  # Для хранения векторов изображений
+image_data = []  # Для хранения данных постов с изображениями
 
-def get_image_url_from_post(post_text):
-    soup = BeautifulSoup(post_text, 'html.parser')
-    img_tag = soup.find('img')
-    return img_tag['src'] if img_tag else None
+def get_image_vector(image_url):
+    response = requests.get(image_url)
+    image = Image.open(BytesIO(response.content)).convert("RGB")
+    image = transform(image).unsqueeze(0)
+    
+    with torch.no_grad():
+        vector = model(image).numpy()
+    
+    return vector.flatten()  # Плоский вектор для сравнения
 
 def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
         try:
             response = vk.wall.get(owner_id=-int(group_id), count=count)
-            if response['items']:
-                for post in response['items']:
-                    image_url = get_image_url_from_post(post['text'])
-                    animal_type = classify_image(image_url) if image_url else "Изображение отсутствует"
+            for post in response['items']:
+                image_url = get_image_url_from_post(post['text'])
+                if image_url:
+                    animal_type = classify_image(image_url)
+                    vector = get_image_vector(image_url)
                     post['animal_type'] = animal_type
-                    post['image_url'] = image_url  # Добавляем URL изображения в данные поста
-                    all_posts.append((group_name, post, city))
-            else:
-                logger.warning("В группе %s нет постов", group_name)
+                    post['image_url'] = image_url
+                    all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
-            continue  # Продолжаем с следующей группы
     return all_posts
 
+async def send_similar_posts(update: Update, photo_vector: np.ndarray):
+    similar_posts = []
+    
+    for (group_name, post, city, vector) in image_data:
+        similarity = cosine_similarity([photo_vector], [vector])
+        if similarity >= 0.8:  # Порог схожести, вы можете изменить его
+            similar_posts.append((group_name, post, city, similarity[0][0]))
+    
+    # Отправка похожих постов
+    if similar_posts:
+        for group_name, post, city, similarity in similar_posts:
+            text = escape_markdown(post['text'], version=2)
+            post_id = post['id']
+            group_id = groups[current_index][1]
+            post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+            post_info = (
+                f"Группа: {escape_markdown(group_name, version=2)}\n"
+                f"Город: {escape_markdown(city, version=2)}\n"
+                f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
+                f"Схожесть: {similarity:.2%}\n{text}"
+            )
+            await update.message.reply_text(post_info)
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Получение фото из сообщения
+    photo_file = await update.message.photo[-1].get_file()
+    photo_url = photo_file.file_path
+    
+    # Получение вектора загруженного фото
+    photo_vector = get_image_vector(photo_url)
+    
+    # Поиск похожих постов
+    await send_similar_posts(update, photo_vector)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    global posts, current_index
+    global posts, current_index, image_data
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
-    count = 5000  # Получаем последние 5000 постов
-    posts = get_posts_from_groups(count=count)
+    posts = get_posts_from_groups(count=5000)
+    image_data = [post[3] for post in posts]  # Получаем только векторы
     current_index = 0
     await send_post(update)
 
-async def send_post(update: Update) -> None:
-    global current_index, posts, last_message_id
-    if posts and 0 <= current_index < len(posts):
-        group_name, post, city = posts[current_index]
-        text = escape_markdown(post['text'], version=2)
-        post_id = post['id']
-        group_id = post['owner_id']  # Используем owner_id поста для получения ссылки
-        post_link = f"https://vk.com/wall{group_id}_{post_id}"
-        
-        # Добавляем информацию о животном и фото
-        animal_type = post.get('animal_type', 'Неизвестно')
-        post_info = (
-            f"Группа: {escape_markdown(group_name, version=2)}\n"
-            f"Город: {escape_markdown(city, version=2)}\n"
-            f"Тип животного: {escape_markdown(animal_type, version=2)}\n{text}"
-        )
-
-        # Удаление предыдущего сообщения
-        if last_message_id:
-            try:
-                await update.message.delete()
-            except Exception as e:
-                logger.warning("Не удалось удалить предыдущее сообщение: %s", e)
-                last_message_id = None  # Сброс last_message_id, если удаление не удалось
-
-        # Кнопки
-        keyboard = []
-        if current_index > 0:
-            keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
-        if current_index < len(posts) - 1:  # Убираем кнопку вправо на последнем посте
-            if keyboard:
-                keyboard[0].append(InlineKeyboardButton("⮕", callback_data='right'))
-            else:
-                keyboard.append([InlineKeyboardButton("⮕", callback_data='right')])
-        keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        # Отправка фото вместе с текстом, если URL изображения найден
-        image_url = post.get('image_url')
-        if image_url:
-            response = requests.get(image_url)
-            image = BytesIO(response.content)
-            message = await update.message.reply_photo(
-                photo=image,
-                caption=post_info,
-                reply_markup=reply_markup,
-                parse_mode='MarkdownV2'
-            )
-        else:
-            message = await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='MarkdownV2')
-        
-        last_message_id = message.message_id  # Сохранение ID последнего сообщения
-    else:
-        await update.message.reply_text("Постов больше нет.")
-
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    global current_index, posts
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'left' and current_index > 0:
-        current_index -= 1
-    elif query.data == 'right' and current_index < len(posts) - 1:
-        current_index += 1
-
-    await send_post(query)
-
+# Измените обработку сообщений, чтобы принимать фотографии
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # Добавьте обработчик фото
     app.add_handler(CallbackQueryHandler(button))
     app.run_polling()
 
