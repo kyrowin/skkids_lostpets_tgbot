@@ -11,6 +11,7 @@ import torch
 from torchvision import transforms
 from torchvision.models import resnet18
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity  # Добавлено для вычисления схожести
 
 VK_API_TOKEN = 'your_vk_api_token'
 TELEGRAM_BOT_TOKEN = 'your_telegram_bot_token'
@@ -30,7 +31,8 @@ posts = []
 current_index = 0
 last_message_id = None
 
-model = resnet18(weights='DEFAULT')  # Используйте weights вместо pretrained
+# Инициализация модели
+model = resnet18(weights='DEFAULT')
 model.eval()
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -51,6 +53,11 @@ def get_image_vector(image_url):
     
     return vector.flatten()  # Плоский вектор для сравнения
 
+def get_image_url_from_post(post_text):
+    # Примерный код для получения URL изображения из текста поста
+    # (реализуйте в соответствии с вашими требованиями)
+    return None  # Замените на логику извлечения URL
+
 def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
@@ -59,7 +66,7 @@ def get_posts_from_groups(count=5000):
             for post in response['items']:
                 image_url = get_image_url_from_post(post['text'])
                 if image_url:
-                    animal_type = classify_image(image_url)
+                    animal_type = classify_image(image_url)  # Предполагается, что эта функция существует
                     vector = get_image_vector(image_url)
                     post['animal_type'] = animal_type
                     post['image_url'] = image_url
@@ -106,11 +113,41 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index, image_data
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
     posts = get_posts_from_groups(count=5000)
-    image_data = [post[3] for post in posts]  # Получаем только векторы
+    image_data = [(post[0], post[1], post[2], post[3]) for post in posts]  # Получаем все данные
     current_index = 0
     await send_post(update)
 
-# Измените обработку сообщений, чтобы принимать фотографии
+async def send_post(update: Update):
+    global current_index
+    if current_index < len(posts):
+        group_name, post, city, vector = posts[current_index]
+        text = escape_markdown(post['text'], version=2)
+        post_id = post['id']
+        group_id = groups[current_index][1]
+        post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+
+        post_info = (
+            f"Группа: {escape_markdown(group_name, version=2)}\n"
+            f"Город: {escape_markdown(city, version=2)}\n"
+            f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
+            f"Ссылка на пост: {post_link}\n"
+            f"Текст: {text}"
+        )
+        
+        await update.message.reply_text(post_info)
+
+def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global current_index
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'left' and current_index > 0:
+        current_index -= 1
+    elif query.data == 'right' and current_index < len(posts) - 1:
+        current_index += 1
+
+    await send_post(update)
+
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
