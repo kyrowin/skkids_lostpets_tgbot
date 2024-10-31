@@ -2,8 +2,8 @@ import logging
 import vk_api
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.helpers import escape_markdown
 from PIL import Image
 from io import BytesIO
@@ -47,7 +47,6 @@ image_data = []  # Для хранения данных постов с изоб
 
 def get_image_url_from_post(post_text):
     # Извлечение URL изображения из текста поста (попробуйте найти подходящий URL в вашем тексте)
-    # Пример простого поиска URL по регулярному выражению
     import re
     image_urls = re.findall(r'(https?://[^\s]+(?:jpg|jpeg|png))', post_text)
     return image_urls[0] if image_urls else None
@@ -105,6 +104,8 @@ async def send_similar_posts(update: Update, photo_vector: np.ndarray):
                 f"Схожесть: {similarity:.2%}\n{text}"
             )
             await update.message.reply_text(post_info)
+    else:
+        await update.message.reply_text("Похожие посты не найдены.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Получение фото из сообщения
@@ -123,7 +124,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     posts = get_posts_from_groups(count=5000)
     image_data = [post[3] for post in posts]  # Получаем только векторы
     logger.info("Всего найдено постов: %d", len(posts))
-    await send_post(update)
+    await send_post(update)  # Вызов send_post для отправки постов
+
+async def send_post(update: Update):
+    if not image_data:
+        await update.message.reply_text("Нет доступных постов для отправки.")
+        return
+
+    for group_name, post, city, vector in image_data:
+        text = escape_markdown(post['text'], version=2)
+        post_id = post['id']
+        group_id = groups[current_index][1]
+        post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+        post_info = (
+            f"Группа: {escape_markdown(group_name, version=2)}\n"
+            f"Город: {escape_markdown(city, version=2)}\n"
+            f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
+            f"Ссылка на пост: {post_link}\n"
+            f"Текст: {text}"
+        )
+        await update.message.reply_text(post_info)
 
 # Измените обработку сообщений, чтобы принимать фотографии
 def main() -> None:
