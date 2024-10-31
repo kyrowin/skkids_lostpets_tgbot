@@ -113,12 +113,13 @@ async def send_post(update: Update) -> None:
                 await update.message.bot.delete_message(update.effective_chat.id, last_message_id)
             except Exception as e:
                 logger.warning("Не удалось удалить предыдущее сообщение: %s", e)
+                last_message_id = None  # Сброс last_message_id, если удаление не удалось
 
         # Кнопки
         keyboard = []
         if current_index > 0:
             keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
-        if current_index < len(posts) - 1:
+        if current_index < len(posts) - 1:  # Убираем кнопку вправо на последнем посте
             if keyboard:
                 keyboard[0].append(InlineKeyboardButton("⮕", callback_data='right'))
             else:
@@ -143,6 +144,7 @@ async def send_post(update: Update) -> None:
         last_message_id = message.message_id  # Сохранение ID последнего сообщения
     else:
         await update.message.reply_text("Постов больше нет.")
+
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global current_index, posts
