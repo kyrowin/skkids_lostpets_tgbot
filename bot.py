@@ -1,8 +1,7 @@
 import logging
 import vk_api
 import requests
-from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.helpers import escape_markdown
 from PIL import Image
@@ -27,8 +26,9 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
-last_message_id = None  # Отслеживание последнего сообщения для удаления
+last_message_id = None
 
+# Модель для классификации
 model = resnet18(pretrained=True)
 model.eval()
 transform = transforms.Compose([
@@ -52,10 +52,13 @@ def classify_image(image_url):
         logger.error("Ошибка классификации изображения: %s", e)
         return "Неизвестно"
 
-def get_image_url_from_post(post_text):
-    soup = BeautifulSoup(post_text, 'html.parser')
-    img_tag = soup.find('img')
-    return img_tag['src'] if img_tag else None
+def get_image_url_from_attachments(attachments):
+    for attachment in attachments:
+        if attachment['type'] == 'photo':
+            sizes = attachment['photo']['sizes']
+            max_size_photo = max(sizes, key=lambda size: size['width'])
+            return max_size_photo['url']
+    return None
 
 def get_posts_from_groups(count=10):
     all_posts = []
@@ -63,10 +66,10 @@ def get_posts_from_groups(count=10):
         try:
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
-                image_url = get_image_url_from_post(post['text'])
+                image_url = get_image_url_from_attachments(post.get('attachments', []))
                 animal_type = classify_image(image_url) if image_url else "Изображение отсутствует"
                 post['animal_type'] = animal_type
-                post['image_url'] = image_url  # Добавляем URL изображения в данные поста
+                post['image_url'] = image_url
                 all_posts.append((group_name, post, city))
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
@@ -88,7 +91,6 @@ async def send_post(update: Update) -> None:
         group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
         
-        # Добавляем информацию о животном и фото
         animal_type = post.get('animal_type', 'Неизвестно')
         post_info = (
             f"Группа: {escape_markdown(group_name, version=2)}\n"
@@ -96,14 +98,12 @@ async def send_post(update: Update) -> None:
             f"Тип животного: {escape_markdown(animal_type, version=2)}\n{text}"
         )
         
-        # Удаление предыдущего сообщения
         if last_message_id:
             try:
                 await update.message.bot.delete_message(update.effective_chat.id, last_message_id)
             except Exception as e:
                 logger.warning("Не удалось удалить предыдущее сообщение: %s", e)
 
-        # Кнопки
         keyboard = []
         if current_index > 0:
             keyboard.append([InlineKeyboardButton("⬅", callback_data='left')])
@@ -115,7 +115,6 @@ async def send_post(update: Update) -> None:
         keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Отправка фото вместе с текстом, если URL изображения найден
         image_url = post.get('image_url')
         if image_url:
             response = requests.get(image_url)
@@ -129,7 +128,7 @@ async def send_post(update: Update) -> None:
         else:
             message = await update.message.reply_text(post_info, reply_markup=reply_markup, parse_mode='MarkdownV2')
         
-        last_message_id = message.message_id  # Сохранение ID последнего сообщения
+        last_message_id = message.message_id
     else:
         await update.message.reply_text("Постов больше нет.")
 
