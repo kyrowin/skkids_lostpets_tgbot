@@ -46,7 +46,7 @@ image_vectors = []  # Для хранения векторов изображе�
 image_data = []  # Для хранения данных постов с изображениями
 
 def get_image_url_from_post(post_text):
-    # Извлечение URL изображения из текста поста (попробуйте найти подходящий URL в вашем тексте)
+    # Извлечение URL изображения из текста поста
     import re
     image_urls = re.findall(r'(https?://[^\s]+(?:jpg|jpeg|png))', post_text)
     return image_urls[0] if image_urls else None
@@ -61,22 +61,23 @@ def get_image_vector(image_url):
     
     return vector.flatten()  # Плоский вектор для сравнения
 
-def get_posts_from_groups(count=5000):
+def get_posts_from_groups(count=100):  # Установите лимит по умолчанию
     all_posts = []
     for group_name, group_id, city in groups:
         try:
             logger.info("Получение постов из группы %s (ID: %s)...", group_name, group_id)
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
-                image_url = get_image_url_from_post(post['text'])
-                if image_url:
-                    # Проверяем, есть ли ключевые слова в тексте поста
-                    if any(term in post['text'].lower() for term in SEARCH_TERMS):
-                        animal_type = classify_image(image_url)  # Замените на вашу функцию классификации
-                        vector = get_image_vector(image_url)
-                        post['animal_type'] = animal_type
-                        post['image_url'] = image_url
-                        all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
+                if 'text' in post and post['text']:  # Убедитесь, что текст поста существует
+                    image_url = get_image_url_from_post(post['text'])
+                    if image_url:
+                        # Проверяем, есть ли ключевые слова в тексте поста
+                        if any(term in post['text'].lower() for term in SEARCH_TERMS):
+                            animal_type = classify_image(image_url)  # Замените на вашу функцию классификации
+                            vector = get_image_vector(image_url)
+                            post['animal_type'] = animal_type
+                            post['image_url'] = image_url
+                            all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
             logger.info("Получено %d постов из группы %s.", len(response['items']), group_name)
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
@@ -124,7 +125,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     posts = get_posts_from_groups(count=5000)
     image_data = [post[3] for post in posts]  # Получаем только векторы
     logger.info("Всего найдено постов: %d", len(posts))
-    await send_post(update)  # Вызов send_post для отправки постов
+    
+    # Отправляем найденные посты
+    await send_post(update)  
 
 async def send_post(update: Update):
     if not image_data:
