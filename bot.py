@@ -1,14 +1,15 @@
 import logging
 import vk_api
 import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from bs4 import BeautifulSoup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.helpers import escape_markdown
 from PIL import Image
 from io import BytesIO
 import torch
 from torchvision import transforms
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet18
 
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
@@ -26,10 +27,9 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
-last_message_id = None
+last_message_id = None  # Отслеживание последнего сообщения для удаления
 
-# Модель для классификации
-model = resnet18(weights=ResNet18_Weights.DEFAULT)
+model = resnet18(weights='DEFAULT')  # Используем новые веса
 model.eval()
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -52,32 +52,34 @@ def classify_image(image_url):
         logger.error("Ошибка классификации изображения: %s", e)
         return "Неизвестно"
 
-def get_image_url_from_attachments(attachments):
-    for attachment in attachments:
-        if attachment['type'] == 'photo':
-            sizes = attachment['photo']['sizes']
-            max_size_photo = max(sizes, key=lambda size: size['width'])
-            return max_size_photo['url']
-    return None
+def get_image_url_from_post(post_text):
+    soup = BeautifulSoup(post_text, 'html.parser')
+    img_tag = soup.find('img')
+    return img_tag['src'] if img_tag else None
 
-def get_posts_from_groups(count=10):
+def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
         try:
             response = vk.wall.get(owner_id=-int(group_id), count=count)
-            for post in response['items']:
-                image_url = get_image_url_from_attachments(post.get('attachments', []))
-                animal_type = classify_image(image_url) if image_url else "Изображение отсутствует"
-                post['animal_type'] = animal_type
-                post['image_url'] = image_url
-                all_posts.append((group_name, post, city))
+            if response['items']:
+                for post in response['items']:
+                    image_url = get_image_url_from_post(post['text'])
+                    animal_type = classify_image(image_url) if image_url else "Изображение отсутствует"
+                    post['animal_type'] = animal_type
+                    post['image_url'] = image_url  # Добавляем URL изображения в данные поста
+                    all_posts.append((group_name, post, city))
+            else:
+                logger.warning("В группе %s нет постов", group_name)
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
+            continue  # Продолжаем с следующей группы
     return all_posts
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index
-    count = 5
+    await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
+    count = 5000  # Получаем последние 5000 постов
     posts = get_posts_from_groups(count=count)
     current_index = 0
     await send_post(update)
@@ -86,18 +88,10 @@ async def send_post(update: Update) -> None:
     global current_index, posts, last_message_id
     if posts and 0 <= current_index < len(posts):
         group_name, post, city = posts[current_index]
-        
-        # Проверка на существование группы
-        if current_index < len(groups):
-            group_id = groups[current_index][1]
-        else:
-            logger.error("current_index выходит за пределы списка groups.")
-            await update.message.reply_text("Произошла ошибка. Пожалуйста, попробуйте позже.")
-            return
-
         text = escape_markdown(post['text'], version=2)
         post_id = post['id']
-        post_link = f"https://vk.com/wall-{group_id}_{post_id}"
+        group_id = post['owner_id']  # Используем owner_id поста для получения ссылки
+        post_link = f"https://vk.com/wall{group_id}_{post_id}"
         
         # Добавляем информацию о животном и фото
         animal_type = post.get('animal_type', 'Неизвестно')
@@ -106,11 +100,11 @@ async def send_post(update: Update) -> None:
             f"Город: {escape_markdown(city, version=2)}\n"
             f"Тип животного: {escape_markdown(animal_type, version=2)}\n{text}"
         )
-        
+
         # Удаление предыдущего сообщения
         if last_message_id:
             try:
-                await update.message.bot.delete_message(update.effective_chat.id, last_message_id)
+                await update.message.delete()
             except Exception as e:
                 logger.warning("Не удалось удалить предыдущее сообщение: %s", e)
                 last_message_id = None  # Сброс last_message_id, если удаление не удалось
@@ -144,7 +138,6 @@ async def send_post(update: Update) -> None:
         last_message_id = message.message_id  # Сохранение ID последнего сообщения
     else:
         await update.message.reply_text("Постов больше нет.")
-
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global current_index, posts
