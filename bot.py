@@ -69,6 +69,7 @@ def get_posts_from_groups(count=100):  # Установите лимит по у
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
                 if 'text' in post and post['text']:  # Убедитесь, что текст поста существует
+                    logger.debug("Текст поста: %s", post['text'])  # Логируем текст поста
                     image_url = get_image_url_from_post(post['text'])
                     if image_url:
                         # Проверяем, есть ли ключевые слова в тексте поста
@@ -76,6 +77,7 @@ def get_posts_from_groups(count=100):  # Установите лимит по у
                             vector = get_image_vector(image_url)
                             post['image_url'] = image_url
                             all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
+                            logger.info("Найден подходящий пост: %s", post['text'])
             logger.info("Получено %d постов из группы %s.", len(response['items']), group_name)
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
