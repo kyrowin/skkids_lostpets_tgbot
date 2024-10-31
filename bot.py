@@ -22,9 +22,9 @@ SEARCH_TERMS = ["потеря", "питомец", "собака", "кошка", 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Указываем только группу lostpets
 groups = [
     ("lostpets", "39991594", "Вологодская обл."),
-    ("public183021083", "183021083", "Тобольск"),
 ]
 
 vk_session = vk_api.VkApi(token=VK_API_TOKEN)
@@ -73,9 +73,7 @@ def get_posts_from_groups(count=100):  # Установите лимит по у
                     if image_url:
                         # Проверяем, есть ли ключевые слова в тексте поста
                         if any(term in post['text'].lower() for term in SEARCH_TERMS):
-                            animal_type = classify_image(image_url)  # Замените на вашу функцию классификации
                             vector = get_image_vector(image_url)
-                            post['animal_type'] = animal_type
                             post['image_url'] = image_url
                             all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
             logger.info("Получено %d постов из группы %s.", len(response['items']), group_name)
@@ -101,7 +99,6 @@ async def send_similar_posts(update: Update, photo_vector: np.ndarray):
             post_info = (
                 f"Группа: {escape_markdown(group_name, version=2)}\n"
                 f"Город: {escape_markdown(city, version=2)}\n"
-                f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
                 f"Схожесть: {similarity:.2%}\n{text}"
             )
             await update.message.reply_text(post_info)
@@ -122,7 +119,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index, image_data
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
-    posts = get_posts_from_groups(count=5000)
+    posts = get_posts_from_groups(count=100)  # Поиск только в lostpets
     image_data = [post[3] for post in posts]  # Получаем только векторы
     logger.info("Всего найдено постов: %d", len(posts))
     
@@ -142,7 +139,6 @@ async def send_post(update: Update):
         post_info = (
             f"Группа: {escape_markdown(group_name, version=2)}\n"
             f"Город: {escape_markdown(city, version=2)}\n"
-            f"Тип животного: {escape_markdown(post.get('animal_type', 'Неизвестно'), version=2)}\n"
             f"Ссылка на пост: {post_link}\n"
             f"Текст: {text}"
         )
