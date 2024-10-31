@@ -50,7 +50,6 @@ def get_image_vector(image_url):
     return vector.flatten()
 
 def get_image_url_from_post(post_text):
-    # Регулярное выражение для поиска ссылок на изображения
     image_url_pattern = r'(https?://[^\s]+?\.(?:jpg|jpeg|png|gif))'
     matches = re.findall(image_url_pattern, post_text)
     return matches[0] if matches else None
@@ -59,7 +58,9 @@ def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
         try:
+            logger.info(f"Получение постов из группы {group_name} (ID: {group_id})...")
             response = vk.wall.get(owner_id=-int(group_id), count=count)
+            logger.info(f"Получено {len(response['items'])} постов из группы {group_name}.")
             for post in response['items']:
                 image_url = get_image_url_from_post(post['text'])
                 if image_url:
