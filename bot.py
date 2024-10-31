@@ -8,7 +8,7 @@ from PIL import Image
 from io import BytesIO
 import torch
 from torchvision import transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet18, ResNet18_Weights
 
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
@@ -29,7 +29,7 @@ current_index = 0
 last_message_id = None
 
 # Модель для классификации
-model = resnet18(pretrained=True)
+model = resnet18(weights=ResNet18_Weights.DEFAULT)
 model.eval()
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
