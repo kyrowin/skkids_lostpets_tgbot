@@ -73,20 +73,23 @@ def get_posts_from_groups(count=5000):
         try:
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
-                if 'text' in post:
-                    image_url = get_image_url_from_post(post['text'])
-                    animal_type = 'Неизвестно'  # Установка типа животного по умолчанию
-                    vector = None
-                    
-                    if image_url:
-                        vector = get_image_vector(image_url)
-                        if vector is not None:
-                            animal_type = classify_image(image_url)
-                    
-                    if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
-                        post['animal_type'] = animal_type
-                        post['image_url'] = image_url
-                        all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
+                # Извлечение изображений из поста
+                if 'attachments' in post:
+                    for attachment in post['attachments']:
+                        if attachment['type'] == 'photo':
+                            image_url = attachment['photo']['sizes'][-1]['url']  # Получаем URL самой большой версии изображения
+                            break
+                    else:
+                        image_url = None  # Если нет фотографий
+                else:
+                    image_url = None
+
+                animal_type = classify_image(image_url) if image_url else 'Неизвестно'
+                vector = get_image_vector(image_url) if image_url else None
+                if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
+                    post['animal_type'] = animal_type
+                    post['image_url'] = image_url
+                    all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
