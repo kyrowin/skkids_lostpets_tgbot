@@ -115,6 +115,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_similar_posts(update, photo_vector)
 
 async def send_post(update: Update):
+    global current_index  # Добавляем это, чтобы использовать глобальную переменную
     if current_index < len(posts):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
