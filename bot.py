@@ -45,6 +45,11 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+def classify_image(image_url):
+    # Здесь должна быть реализация функции классификации изображений
+    # Например, возвращать 'Собака' или 'Кошка' в зависимости от изображения
+    return 'Неизвестно'  # Заглушка
+
 def get_image_vector(image_url):
     try:
         response = requests.get(image_url)
@@ -74,15 +79,12 @@ def get_posts_from_groups(count=5000):
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
                 # Извлечение изображений из поста
+                image_url = None  # Изначально null
                 if 'attachments' in post:
                     for attachment in post['attachments']:
                         if attachment['type'] == 'photo':
                             image_url = attachment['photo']['sizes'][-1]['url']  # Получаем URL самой большой версии изображения
                             break
-                    else:
-                        image_url = None  # Если нет фотографий
-                else:
-                    image_url = None
 
                 animal_type = classify_image(image_url) if image_url else 'Неизвестно'
                 vector = get_image_vector(image_url) if image_url else None
@@ -100,7 +102,7 @@ async def send_similar_posts(update: Update, photo_vector: np.ndarray):
     for (group_name, post, city, vector) in image_data:
         if vector is not None:  # Проверка на наличие вектора
             similarity = cosine_similarity([photo_vector], [vector])
-            if similarity[0][0] >= 0.8:  # Порог схожести, вы можете изменить его
+            if similarity[0][0] >= 0.8:  # Порог схожести
                 similar_posts.append((group_name, post, city, similarity[0][0]))
     
     # Отправка похожих постов
@@ -143,10 +145,12 @@ async def send_post(update: Update):
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
+        
+        if media:
+            await update.message.reply_media_group(media)  # Отправляем как медиа-группу
         else:
             await update.message.reply_text("Пост без изображения.")
 
-        await update.message.reply_media_group(media)  # Отправляем как медиа-группу
         current_index += 1
     else:
         await update.message.reply_text("Не найдено больше постов.")
