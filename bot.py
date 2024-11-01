@@ -124,7 +124,6 @@ async def send_post(update: Update):
             await update.message.reply_text("Пост без изображения.")
             return
 
-        # Кнопки навигации
         keyboard = [
             [InlineKeyboardButton("⬅️ Назад", callback_data='previous'),
              InlineKeyboardButton("Вперёд ➡️", callback_data='next')],
