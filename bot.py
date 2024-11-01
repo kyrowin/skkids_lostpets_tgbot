@@ -32,28 +32,32 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
-last_message_id = None
+image_data = []  # Для хранения данных постов с изображениями
 
+# Загрузка модели ResNet
 model = resnet18(weights='DEFAULT')  # Используйте weights вместо pretrained
 model.eval()
+
+# Преобразование для обработки изображений
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-image_vectors = []  # Для хранения векторов изображений
-image_data = []  # Для хранения данных постов с изображениями
-
 def get_image_vector(image_url):
-    response = requests.get(image_url)
-    image = Image.open(BytesIO(response.content)).convert("RGB")
-    image = transform(image).unsqueeze(0)
-    
-    with torch.no_grad():
-        vector = model(image).numpy()
-    
-    return vector.flatten()  # Плоский вектор для сравнения
+    try:
+        response = requests.get(image_url)
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image = transform(image).unsqueeze(0)
+
+        with torch.no_grad():
+            vector = model(image).numpy()
+
+        return vector.flatten()  # Плоский вектор для сравнения
+    except Exception as e:
+        logger.error("Ошибка при получении вектора изображения: %s", e)
+        return None
 
 def get_image_url_from_post(post_text):
     soup = BeautifulSoup(post_text, "html.parser")
@@ -85,7 +89,7 @@ async def send_similar_posts(update: Update, photo_vector: np.ndarray):
     for (group_name, post, city, vector) in image_data:
         if vector is not None:  # Проверка на наличие вектора
             similarity = cosine_similarity([photo_vector], [vector])
-            if similarity >= 0.8:  # Порог схожести, вы можете изменить его
+            if similarity[0][0] >= 0.8:  # Порог схожести, вы можете изменить его
                 similar_posts.append((group_name, post, city, similarity[0][0]))
     
     # Отправка похожих постов
