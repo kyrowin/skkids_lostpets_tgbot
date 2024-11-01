@@ -3,7 +3,7 @@ import vk_api
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InputMediaPhoto, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from telegram.helpers import escape_markdown
 from PIL import Image
 from io import BytesIO
