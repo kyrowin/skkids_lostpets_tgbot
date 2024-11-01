@@ -19,7 +19,7 @@ TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-search_keywords = ['нашел', 'нашла', 'на улице', 'пропал']
+search_keywords = ['нашел', 'нашла', 'на улице', 'пропал', 'потеряшка']
 
 groups = [
     ("lostpets", "39991594", "Вологодская обл."),
@@ -136,7 +136,7 @@ async def send_post(update: Update):
         await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
         
     else:
-        await update.message.reply_text("Не найдено больше постов.")
+        await update.message.reply_text("Больше постов нет.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
@@ -150,7 +150,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index
-    await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
+    await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте... Это занимает до 30 секунд.")
     posts = get_posts_from_groups(count=5000)
     current_index = 0
     await send_post(update)
