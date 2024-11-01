@@ -2,8 +2,8 @@ import logging
 import vk_api
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InputMediaPhoto
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.helpers import escape_markdown
 from PIL import Image
 from io import BytesIO
@@ -48,6 +48,7 @@ transform = transforms.Compose([
 def get_image_vector(image_url):
     try:
         response = requests.get(image_url)
+        response.raise_for_status()  # Проверка на ошибки HTTP
         image = Image.open(BytesIO(response.content)).convert("RGB")
         image = transform(image).unsqueeze(0)
 
@@ -72,13 +73,20 @@ def get_posts_from_groups(count=5000):
         try:
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
-                image_url = get_image_url_from_post(post['text'])
-                animal_type = classify_image(image_url) if image_url else 'Неизвестно'
-                vector = get_image_vector(image_url) if image_url else None
-                if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
-                    post['animal_type'] = animal_type
-                    post['image_url'] = image_url
-                    all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
+                if 'text' in post:
+                    image_url = get_image_url_from_post(post['text'])
+                    animal_type = 'Неизвестно'  # Установка типа животного по умолчанию
+                    vector = None
+                    
+                    if image_url:
+                        vector = get_image_vector(image_url)
+                        if vector is not None:
+                            animal_type = classify_image(image_url)
+                    
+                    if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
+                        post['animal_type'] = animal_type
+                        post['image_url'] = image_url
+                        all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
         except vk_api.exceptions.ApiError as e:
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
@@ -116,7 +124,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_vector = get_image_vector(photo_url)
     
     # Поиск похожих постов
-    await send_similar_posts(update, photo_vector)
+    if photo_vector is not None:
+        await send_similar_posts(update, photo_vector)
+    else:
+        await update.message.reply_text("Не удалось обработать загруженное изображение.")
 
 async def send_post(update: Update):
     global current_index  # Добавляем это, чтобы использовать глобальную переменную
@@ -126,13 +137,14 @@ async def send_post(update: Update):
         post_id = post[1]['id']
         group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
-        post_info = (
-            f"Группа: {escape_markdown(post[0], version=2)}\n"
-            f"Город: {escape_markdown(post[2], version=2)}\n"
-            f"Тип животного: {escape_markdown(post[1].get('animal_type', 'Неизвестно'), version=2)}\n"
-            f"{text}\n{post_link}"
-        )
-        await update.message.reply_text(post_info)
+        
+        media = []
+        if post[1].get('image_url'):
+            media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
+        else:
+            await update.message.reply_text("Пост без изображения.")
+
+        await update.message.reply_media_group(media)  # Отправляем как медиа-группу
         current_index += 1
     else:
         await update.message.reply_text("Не найдено больше постов.")
