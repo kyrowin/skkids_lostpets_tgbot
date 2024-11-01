@@ -42,11 +42,6 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-def classify_image(image_url):
-    # Здесь должна быть ваша логика классификации изображения
-    # Верните 'кошка', 'собака' или 'Неизвестно' в зависимости от результата
-    return 'Неизвестно'
-
 def get_image_vector(image_url):
     try:
         response = requests.get(image_url)
@@ -103,23 +98,26 @@ async def send_post(update: Update):
         post_id = post[1]['id']
         group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
-
+        
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
-            await update.message.reply_media_group(media)
         else:
             await update.message.reply_text("Пост без изображения.")
-            return
+            return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
         keyboard = [
             [InlineKeyboardButton("⬅️ Назад", callback_data='previous'),
              InlineKeyboardButton("Вперёд ➡️", callback_data='next')],
-            [InlineKeyboardButton("Открыть пост", url=post_link)]
+            [InlineKeyboardButton("Открыть пост", url=post_link)],
+            [InlineKeyboardButton(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", callback_data='no_action')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_media_group(media)
         await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        
     else:
         await update.message.reply_text("Не найдено больше постов.")
 
@@ -127,7 +125,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     photo_vector = get_image_vector(photo_url)
-
+    
     if photo_vector is not None:
         await send_similar_posts(update, photo_vector)
     else:
@@ -146,17 +144,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == 'next':
-        if current_index < len(posts) - 1:
-            current_index += 1
-            await send_post(query.message)
-        else:
-            await query.message.reply_text("Это последний пост.")
+        current_index += 1
+        await send_post(query.message)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
-            await send_post(query.message)
-        else:
-            await query.message.reply_text("Это первый пост.")
+        await send_post(query.message)
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
