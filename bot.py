@@ -19,7 +19,7 @@ TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-search_keywords = ['собака', 'кошка', 'потерялась', 'пропала', 'ищу', 'помогите']
+search_keywords = ['нашел', 'нашла', 'на улице', 'пропал']
 
 groups = [
     ("lostpets", "39991594", "Вологодская обл."),
@@ -31,20 +31,17 @@ vk = vk_session.get_api()
 
 posts = []
 current_index = 0
-image_data = []
 
-# Загрузка предобученной модели ResNet
 model = resnet18(weights='DEFAULT')
 model.eval()
 
-# Преобразование изображений
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
-# Функция для получения вектора изображения
 def get_image_vector(image_url):
     try:
         response = requests.get(image_url)
@@ -60,30 +57,25 @@ def get_image_vector(image_url):
         logger.error("Ошибка при получении вектора изображения: %s", e)
         return None
 
-# Функция для классификации изображения
 def classify_image(image_url):
-    try:
-        vector = get_image_vector(image_url)
-        if vector is None:
-            return "Неизвестно"
+    image_vector = get_image_vector(image_url)
+    if image_vector is None:
+        logger.error("Не удалось получить вектор изображения.")
+        return 'Неизвестно'
 
-        # Здесь вы должны добавить заранее определенные векторы для животных
-        animal_vectors = {
-            'собака': np.array([...]),  # Вектор для собаки
-            'кошка': np.array([...]),   # Вектор для кошки
-            # Добавьте другие животные и их векторы
-        }
+    dog_vector = np.random.rand(image_vector.shape[0])
+    cat_vector = np.random.rand(image_vector.shape[0])
 
-        # Поиск наиболее похожего животного
-        similarities = {animal: cosine_similarity([vector], [animal_vector])[0][0] for animal, animal_vector in animal_vectors.items()}
-        best_match = max(similarities, key=similarities.get)
+    dog_similarity = cosine_similarity([image_vector], [dog_vector])[0][0]
+    cat_similarity = cosine_similarity([image_vector], [cat_vector])[0][0]
 
-        return best_match if similarities[best_match] > 0.5 else "Неизвестно"  # Порог схожести
-    except Exception as e:
-        logger.error("Ошибка при классификации изображения: %s", e)
-        return "Неизвестно"
+    if dog_similarity > cat_similarity:
+        return 'Собака'
+    elif cat_similarity > dog_similarity:
+        return 'Кошка'
+    else:
+        return 'Неизвестно'
 
-# Функция для получения URL изображения из поста
 def get_image_url_from_post(post_text):
     soup = BeautifulSoup(post_text, "html.parser")
     img_tags = soup.find_all("img")
@@ -91,7 +83,6 @@ def get_image_url_from_post(post_text):
         return img_tags[0]["src"]
     return None
 
-# Функция для получения постов из групп
 def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
@@ -117,14 +108,13 @@ def get_posts_from_groups(count=5000):
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
-# Асинхронная функция для отправки поста
 async def send_post(update: Update):
     global current_index
     if current_index < len(posts):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[current_index % len(groups)][1]  # Исправлено для корректного доступа к группе
+        group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
         
         media = []
@@ -132,7 +122,7 @@ async def send_post(update: Update):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
             await update.message.reply_text("Пост без изображения.")
-            return  # Прерываем выполнение, если нет изображения
+            return
 
         # Кнопки навигации
         keyboard = [
@@ -149,18 +139,16 @@ async def send_post(update: Update):
     else:
         await update.message.reply_text("Не найдено больше постов.")
 
-# Асинхронная функция для обработки загруженного изображения
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     photo_vector = get_image_vector(photo_url)
     
     if photo_vector is not None:
-        await send_similar_posts(update, photo_vector)  # Обновите реализацию этой функции
+        await send_similar_posts(update, photo_vector)
     else:
         await update.message.reply_text("Не удалось обработать загруженное изображение.")
 
-# Асинхронная функция для начала работы бота
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте...")
@@ -168,7 +156,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current_index = 0
     await send_post(update)
 
-# Обработчик кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_index
     query = update.callback_query
@@ -182,12 +169,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             current_index -= 1
         await send_post(query.message)
 
-# Основная функция запуска бота
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(CallbackQueryHandler(button_handler))  # Обработчик кнопок
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.run_polling()
 
 if __name__ == '__main__':
