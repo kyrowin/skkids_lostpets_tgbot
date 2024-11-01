@@ -116,7 +116,6 @@ async def send_similar_posts(update: Update, photo_vector: np.ndarray):
             await update.message.reply_text(post_info)
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Получение фото из сообщения
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     
