@@ -13,8 +13,8 @@ from torchvision.models import resnet18
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-VK_API_TOKEN = 'ваш_vk_api_token'
-TELEGRAM_BOT_TOKEN = 'ваш_telegram_bot_token'
+VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
+TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
