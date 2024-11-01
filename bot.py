@@ -69,9 +69,9 @@ def get_posts_from_groups(count=5000):
             response = vk.wall.get(owner_id=-int(group_id), count=count)
             for post in response['items']:
                 image_url = get_image_url_from_post(post['text'])
+                animal_type = classify_image(image_url) if image_url else 'Неизвестно'
+                vector = get_image_vector(image_url) if image_url else None
                 if image_url or any(keyword in post['text'].lower() for keyword in search_keywords):
-                    animal_type = classify_image(image_url) if image_url else 'Неизвестно'
-                    vector = get_image_vector(image_url) if image_url else None
                     post['animal_type'] = animal_type
                     post['image_url'] = image_url
                     all_posts.append((group_name, post, city, vector))  # Сохраняем вектор изображения
