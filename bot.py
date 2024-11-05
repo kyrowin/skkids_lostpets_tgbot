@@ -113,14 +113,14 @@ async def send_post(update: Update):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[current_index % len(groups)][1]  # Исправлено для корректного обращения к группе
+        group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
-
+        
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await update.reply_text("Пост без изображения.")
+            await update.message.reply_text("Пост без изображения.")
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
@@ -132,12 +132,12 @@ async def send_post(update: Update):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Используем правильный объект для отправки
-        await update.callback_query.message.reply_media_group(media)  # Исправлено здесь
-        await update.callback_query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
-
+        # Use update.message to reply with the media group
+        await update.message.reply_media_group(media)
+        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        
     else:
-        await update.callback_query.message.reply_text("Не найдено больше постов.")
+        await update.message.reply_text("Не найдено больше постов.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
