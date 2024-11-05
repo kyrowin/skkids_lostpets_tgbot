@@ -134,7 +134,7 @@ async def send_post(update: Update):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_media_group(media)
-        await update.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
         
     else:
         await update.reply_text("Не найдено больше постов.")
