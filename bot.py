@@ -99,7 +99,7 @@ def get_posts_from_groups(count=5000):
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
-async def send_post(query: CallbackQuery):
+async def send_post(query: Update):
     global current_index
     if current_index < len(posts):
         post = posts[current_index]
@@ -108,7 +108,7 @@ async def send_post(query: CallbackQuery):
 
         # Проверка на существование group_id
         if current_index < len(groups):
-            group_id = groups[current_index][1]
+            group_id = groups[0][1]  # Получаем group_id первого элемента, так как current_index может превышать размер groups
         else:
             await query.message.reply_text("Ошибка: Не удалось найти группу для поста.")
             return  # Прерываем выполнение
@@ -191,7 +191,6 @@ async def send_similar_posts(update: Update, photo_url):
     if similar_posts:
         await update.message.reply_text("Найдено похожих постов:")
         for post in similar_posts:
-            # Обновляем индекс, чтобы не было дублирования
             current_index = posts.index(post)
             await send_post(update)
     else:
@@ -205,26 +204,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current_index = 0
     await send_post(update)
 
-# Обработка кнопок
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global current_index
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == 'next':
-        current_index += 1
-        await send_post(query.message)
-    elif query.data == 'previous':
-        if current_index > 0:
-            current_index -= 1
-        await send_post(query.message)
-
 # Основная функция
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(CallbackQueryHandler(button_handler))
+    
+    logger.info("Бот запущен.")
     app.run_polling()
 
 if __name__ == '__main__':
