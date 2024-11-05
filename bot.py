@@ -121,9 +121,10 @@ async def send_post(update: Update):
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await update.message.reply_text("Пост без изображения.")
-            return
+            await update.reply_text("Пост без изображения.")
+            return  # Прерываем выполнение, если нет изображения
 
+        # Кнопки навигации
         keyboard = [
             [InlineKeyboardButton("⬅️ Назад", callback_data='previous'),
              InlineKeyboardButton("Вперёд ➡️", callback_data='next')],
@@ -132,11 +133,11 @@ async def send_post(update: Update):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_media_group(media)
-        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        await update.reply_media_group(media)
+        await update.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
         
     else:
-        await update.message.reply_text("Больше постов нет.")
+        await update.reply_text("Не найдено больше постов.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
