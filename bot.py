@@ -140,24 +140,32 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     photo_vector = get_image_vector(photo_url)
-    
+
     if photo_vector is not None:
-        await send_similar_posts(update, photo_vector)
+        await send_similar_posts(update, photo_url)  # Изменено для передачи URL изображения
     else:
         await update.message.reply_text("Не удалось обработать загруженное изображение.")
 
 # Поиск похожих постов
-async def send_similar_posts(update: Update, photo_vector):
+async def send_similar_posts(update: Update, photo_url):
+    global current_index
     similar_posts = []
+    
+    # Получаем вектор изображения пользователя
+    user_vector = get_image_vector(photo_url)
+
     for post in posts:
         post_vector = get_image_vector(post[1]['image_url'])
-        if post_vector is not None:
-            # Для упрощения будем считать, что если векторы не равны, посты похожи
-            similar_posts.append(post)
+        if post_vector is not None and user_vector is not None:
+            # Сравниваем векторы, здесь можно добавить вашу логику
+            if np.allclose(user_vector, post_vector):  # Пример, сравниваем, если векторы близки
+                similar_posts.append(post)
 
     if similar_posts:
         await update.message.reply_text("Найдено похожих постов:")
         for post in similar_posts:
+            # Обновляем индекс, чтобы не было дублирования
+            current_index = posts.index(post)
             await send_post(update)
     else:
         await update.message.reply_text("Похожие посты не найдены.")
