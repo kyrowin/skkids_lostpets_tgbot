@@ -42,6 +42,22 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+# Получение вектора изображения
+def get_image_vector(image_url):
+    try:
+        response = requests.get(image_url)
+        response.raise_for_status()
+        image = Image.open(BytesIO(response.content)).convert("RGB")
+        image = transform(image).unsqueeze(0)
+
+        with torch.no_grad():
+            vector = model(image)
+        
+        return vector.flatten().numpy()  # Приводим вектор к 1D массиву
+    except Exception as e:
+        logger.error("Ошибка при получении вектора изображения: %s", e)
+        return None
+
 # Классификация изображений
 def classify_image(image_url):
     image_vector = get_image_vector(image_url)
@@ -61,22 +77,6 @@ def classify_image(image_url):
         return 'Кошка'
     else:
         return 'Неизвестно'
-
-# Получение вектора изображения
-def get_image_vector(image_url):
-    try:
-        response = requests.get(image_url)
-        response.raise_for_status()
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-        image = transform(image).unsqueeze(0)
-
-        with torch.no_grad():
-            vector = model(image).numpy()
-
-        return vector.flatten()
-    except Exception as e:
-        logger.error("Ошибка при получении вектора изображения: %s", e)
-        return None
 
 # Получение ссылок на изображения из постов
 def get_image_url_from_post(post_text):
@@ -161,11 +161,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_similar_posts(update: Update, photo_vector):
     similar_posts = []
     for post in posts:
-        post_vector = get_image_vector(post[1]['image_url'])
-        if post_vector is not None:
-            similarity = cosine_similarity([photo_vector], [post_vector])[0][0]
-            if similarity > 0.5:  # Порог сходства
-                similar_posts.append(post)
+        if post[1].get('image_url'):
+            post_vector = get_image_vector(post[1]['image_url'])
+            if post_vector is not None:
+                similarity = cosine_similarity([photo_vector], [post_vector])[0][0]
+                if similarity > 0.5:  # Порог сходства
+                    similar_posts.append(post)
 
     if similar_posts:
         await update.message.reply_text("Найдено похожих постов:")
