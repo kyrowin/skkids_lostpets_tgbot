@@ -99,20 +99,27 @@ def get_posts_from_groups(count=5000):
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
-async def send_post(update: Update):
+async def send_post(query: CallbackQuery):
     global current_index
     if current_index < len(posts):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[current_index][1]
+
+        # Проверка на существование group_id
+        if current_index < len(groups):
+            group_id = groups[current_index][1]
+        else:
+            await query.message.reply_text("Ошибка: Не удалось найти группу для поста.")
+            return  # Прерываем выполнение
+
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
 
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await update.message.reply_text("Пост без изображения.")
+            await query.message.reply_text("Пост без изображения.")
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
@@ -126,12 +133,13 @@ async def send_post(update: Update):
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Здесь используем update.message для отправки медиа-группы
-        await update.message.reply_media_group(media)
-        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        # Используйте query.message для отправки медиа-группы
+        await query.message.reply_media_group(media)
+        await query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
 
     else:
-        await update.message.reply_text("Не найдено больше постов.")
+        await query.message.reply_text("Не найдено больше постов.")
+
 
 # Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
