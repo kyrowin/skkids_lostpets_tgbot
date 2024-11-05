@@ -168,8 +168,9 @@ async def send_similar_posts(update: Update, photo_vector):
                 similar_posts.append(post)
 
     if similar_posts:
+        await update.message.reply_text("Найдено похожих постов:")
         for post in similar_posts:
-            await send_post(update, post)
+            await send_post(update)
     else:
         await update.message.reply_text("Похожие посты не найдены.")
 
