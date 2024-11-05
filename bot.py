@@ -35,7 +35,6 @@ current_index = 0
 model = resnet18(weights='DEFAULT')
 model.eval()
 
-
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -114,9 +113,9 @@ async def send_post(update: Update):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[current_index][1]
+        group_id = groups[current_index % len(groups)][1]  # Исправлено для корректного обращения к группе
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
-        
+
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
@@ -132,18 +131,19 @@ async def send_post(update: Update):
             [InlineKeyboardButton(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", callback_data='no_action')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_media_group(media)
-        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
-        
+
+        # Используем правильный объект для отправки
+        await update.callback_query.message.reply_media_group(media)  # Исправлено здесь
+        await update.callback_query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+
     else:
-        await update.reply_text("Не найдено больше постов.")
+        await update.callback_query.message.reply_text("Не найдено больше постов.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     photo_vector = get_image_vector(photo_url)
-    
+
     if photo_vector is not None:
         await send_similar_posts(update, photo_vector)
     else:
@@ -163,11 +163,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'next':
         current_index += 1
-        await send_post(update)
+        await send_post(query)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
-        await send_post(query.message)
+        await send_post(query)
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
