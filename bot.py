@@ -9,7 +9,7 @@ from PIL import Image
 from io import BytesIO
 import torch
 from torchvision import transforms
-from torchvision.models import resnet50
+from torchvision.models import resnet18
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -32,8 +32,7 @@ vk = vk_session.get_api()
 posts = []
 current_index = 0
 
-# Use resnet50 for better accuracy in image classification
-model = resnet50(weights='DEFAULT')
+model = resnet18(weights='DEFAULT')
 model.eval()
 
 transform = transforms.Compose([
@@ -63,9 +62,9 @@ def classify_image(image_url):
         logger.error("Не удалось получить вектор изображения.")
         return 'Неизвестно'
 
-    # Load pre-trained vectors for dogs and cats
-    dog_vector = np.random.rand(image_vector.shape[0])  # Dummy vector, replace with actual model output
-    cat_vector = np.random.rand(image_vector.shape[0])  # Dummy vector, replace with actual model output
+    # Замените эти векторы на реальные векторы изображений собак и кошек
+    dog_vector = np.random.rand(image_vector.shape[0])
+    cat_vector = np.random.rand(image_vector.shape[0])
 
     dog_similarity = cosine_similarity([image_vector], [dog_vector])[0][0]
     cat_similarity = cosine_similarity([image_vector], [cat_vector])[0][0]
@@ -115,7 +114,7 @@ async def send_post(update: Update):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = post[0]  # Use the correct group ID here
+        group_id = groups[[g[0] for g in groups].index(post[0])][1]  # Исправлено
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
 
         media = []
@@ -126,19 +125,24 @@ async def send_post(update: Update):
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
-        keyboard = []
-        if current_index > 0:
-            keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='previous')])
-        keyboard.append([InlineKeyboardButton("Вперёд ➡️", callback_data='next')])
-        keyboard.append([InlineKeyboardButton("Открыть пост", url=post_link)])
-        keyboard.append([InlineKeyboardButton(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", callback_data='no_action')])
+        keyboard = [
+            [InlineKeyboardButton("⬅️ Назад", callback_data='previous') if current_index > 0 else None,
+             InlineKeyboardButton("Вперёд ➡️", callback_data='next') if current_index < len(posts) - 1 else None],
+            [InlineKeyboardButton("Открыть пост", url=post_link)],
+            [InlineKeyboardButton(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", callback_data='no_action')]
+        ]
+        keyboard = [btn for btn in keyboard if btn is not None]  # Удаляем None из кнопок
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_media_group(media)
         await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
 
     else:
-        await update.message.reply_text("Не найдено больше постов.")
+        await update.reply_text("Не найдено больше постов.")
+
+async def send_similar_posts(update: Update, photo_vector):
+    # Здесь должна быть логика для поиска и отправки похожих постов
+    await update.message.reply_text("Похожих постов не найдено.")
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
@@ -164,11 +168,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'next':
         current_index += 1
-        await send_post(query.message)
+        await send_post(query)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
-        await send_post(query.message)
+        await send_post(query)
 
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
