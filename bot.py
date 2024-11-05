@@ -9,14 +9,14 @@ from PIL import Image
 from io import BytesIO
 import torch
 from torchvision import transforms
-from torchvision.models import resnet18
+from torchvision.models import resnet50
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 search_keywords = ['нашел', 'нашла', 'на улице', 'пропал', 'потеряшка']
@@ -32,7 +32,8 @@ vk = vk_session.get_api()
 posts = []
 current_index = 0
 
-model = resnet18(weights='DEFAULT')
+# Загружаем модель ResNet50 для классификации изображений
+model = resnet50(weights='DEFAULT')
 model.eval()
 
 transform = transforms.Compose([
@@ -41,6 +42,27 @@ transform = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+# Классификация изображений
+def classify_image(image_url):
+    image_vector = get_image_vector(image_url)
+    if image_vector is None:
+        return 'Неизвестно'
+
+    # Предобученные векторы для собак и кошек
+    dog_vector = np.load("dog_vector.npy")
+    cat_vector = np.load("cat_vector.npy")
+
+    dog_similarity = cosine_similarity([image_vector], [dog_vector])[0][0]
+    cat_similarity = cosine_similarity([image_vector], [cat_vector])[0][0]
+
+    if dog_similarity > cat_similarity:
+        return 'Собака'
+    elif cat_similarity > dog_similarity:
+        return 'Кошка'
+    else:
+        return 'Неизвестно'
+
+# Получение вектора изображения
 def get_image_vector(image_url):
     try:
         response = requests.get(image_url)
@@ -56,26 +78,7 @@ def get_image_vector(image_url):
         logger.error("Ошибка при получении вектора изображения: %s", e)
         return None
 
-def classify_image(image_url):
-    image_vector = get_image_vector(image_url)
-    if image_vector is None:
-        logger.error("Не удалось получить вектор изображения.")
-        return 'Неизвестно'
-
-    # Замените эти векторы на реальные векторы изображений собак и кошек
-    dog_vector = np.random.rand(image_vector.shape[0])
-    cat_vector = np.random.rand(image_vector.shape[0])
-
-    dog_similarity = cosine_similarity([image_vector], [dog_vector])[0][0]
-    cat_similarity = cosine_similarity([image_vector], [cat_vector])[0][0]
-
-    if dog_similarity > cat_similarity:
-        return 'Собака'
-    elif cat_similarity > dog_similarity:
-        return 'Кошка'
-    else:
-        return 'Неизвестно'
-
+# Получение ссылок на изображения из постов
 def get_image_url_from_post(post_text):
     soup = BeautifulSoup(post_text, "html.parser")
     img_tags = soup.find_all("img")
@@ -83,6 +86,7 @@ def get_image_url_from_post(post_text):
         return img_tags[0]["src"]
     return None
 
+# Получение постов из групп
 def get_posts_from_groups(count=5000):
     all_posts = []
     for group_name, group_id, city in groups:
@@ -108,13 +112,14 @@ def get_posts_from_groups(count=5000):
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
+# Отправка поста
 async def send_post(update: Update):
     global current_index
     if current_index < len(posts):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[[g[0] for g in groups].index(post[0])][1]
+        group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
 
         media = []
@@ -122,7 +127,7 @@ async def send_post(update: Update):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
             await update.message.reply_text("Пост без изображения.")
-            return
+            return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
         keyboard = []
@@ -141,20 +146,34 @@ async def send_post(update: Update):
     else:
         await update.reply_text("Не найдено больше постов.")
 
-async def send_similar_posts(update: Update, photo_vector):
-    # Здесь должна быть логика для поиска и отправки похожих постов
-    await update.message.reply_text("Похожих постов не найдено.")
-
+# Обработка фотографий
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_file = await update.message.photo[-1].get_file()
     photo_url = photo_file.file_path
     photo_vector = get_image_vector(photo_url)
-
+    
     if photo_vector is not None:
         await send_similar_posts(update, photo_vector)
     else:
         await update.message.reply_text("Не удалось обработать загруженное изображение.")
 
+# Поиск похожих постов
+async def send_similar_posts(update: Update, photo_vector):
+    similar_posts = []
+    for post in posts:
+        post_vector = get_image_vector(post[1]['image_url'])
+        if post_vector is not None:
+            similarity = cosine_similarity([photo_vector], [post_vector])[0][0]
+            if similarity > 0.5:  # Порог сходства
+                similar_posts.append(post)
+
+    if similar_posts:
+        for post in similar_posts:
+            await send_post(update, post)
+    else:
+        await update.message.reply_text("Похожие посты не найдены.")
+
+# Команда старт
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global posts, current_index
     await update.message.reply_text("Идет поиск постов, пожалуйста, ожидайте... Это занимает до 30 секунд.")
@@ -162,6 +181,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     current_index = 0
     await send_post(update)
 
+# Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_index
     query = update.callback_query
@@ -169,12 +189,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'next':
         current_index += 1
-        await send_post(query)
+        await send_post(query.message)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
-        await send_post(query)
+        await send_post(query.message)
 
+# Основная функция
 def main() -> None:
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
