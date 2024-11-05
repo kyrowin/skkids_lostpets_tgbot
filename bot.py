@@ -105,13 +105,7 @@ async def send_post(query: Update):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-
-        # Проверка на существование group_id
-        if current_index < len(groups):
-            group_id = groups[0][1]  # Получаем group_id первого элемента, так как current_index может превышать размер groups
-        else:
-            await query.message.reply_text("Ошибка: Не удалось найти группу для поста.")
-            return  # Прерываем выполнение
+        group_id = abs(post[1]['owner_id'])  # Получаем group_id текущего поста
 
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
 
@@ -139,7 +133,6 @@ async def send_post(query: Update):
 
     else:
         await query.message.reply_text("Не найдено больше постов.")
-
 
 # Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
