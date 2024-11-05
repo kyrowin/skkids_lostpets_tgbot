@@ -99,7 +99,6 @@ def get_posts_from_groups(count=5000):
             logger.error("Ошибка при обращении к VK API для группы %s: %s", group_name, e)
     return all_posts
 
-# Отправка поста
 async def send_post(update: Update):
     global current_index
     if current_index < len(posts):
@@ -113,7 +112,7 @@ async def send_post(update: Update):
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await update.message.reply_text("Пост без изображения.")
+            await update.reply_text("Пост без изображения.")
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
@@ -127,11 +126,25 @@ async def send_post(update: Update):
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_media_group(media)
-        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        await update.reply_media_group(media)  # Измените на query.message.reply_media_group(media) для кнопок
+        await query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
 
     else:
         await update.reply_text("Не найдено больше постов.")
+
+# Обработка кнопок
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global current_index
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'next':
+        current_index += 1
+        await send_post(query)  # Изменено для передачи объекта query
+    elif query.data == 'previous':
+        if current_index > 0:
+            current_index -= 1
+        await send_post(query)  # Изменено для передачи объекта query
 
 # Обработка фотографий
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
