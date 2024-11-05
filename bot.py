@@ -163,7 +163,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'next':
         current_index += 1
-        await send_post(query.message)
+        await send_post(update)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
