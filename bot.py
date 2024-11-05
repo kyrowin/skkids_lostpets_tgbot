@@ -11,6 +11,7 @@ import torch
 from torchvision import transforms
 from torchvision.models import resnet50
 import numpy as np
+from scipy.spatial.distance import cosine  # Импортируем косинусное расстояние
 
 VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
 TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
@@ -46,9 +47,6 @@ def classify_image(image_url):
     image_vector = get_image_vector(image_url)
     if image_vector is None:
         return 'Неизвестно'
-
-    # Мы просто сделаем искусственное сравнение, чтобы избежать ошибок
-    # Пример: будем считать, что если вектор не None, то это собака
     return 'Собака' if image_vector is not None else 'Неизвестно'
 
 # Получение вектора изображения
@@ -102,20 +100,20 @@ def get_posts_from_groups(count=5000):
     return all_posts
 
 # Отправка поста
-async def send_post(query: Update):
+async def send_post(update: Update):
     global current_index
     if current_index < len(posts):
         post = posts[current_index]
         text = escape_markdown(post[1]['text'], version=2)
         post_id = post[1]['id']
-        group_id = groups[0][1]  # Измените на правильный ID группы, если нужно
+        group_id = groups[current_index][1]
         post_link = f"https://vk.com/wall-{group_id}_{post_id}"
 
         media = []
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await query.message.reply_text("Пост без изображения.")
+            await update.message.reply_text("Пост без изображения.")
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
@@ -129,11 +127,11 @@ async def send_post(query: Update):
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await query.message.reply_media_group(media)
-        await query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        await update.message.reply_media_group(media)
+        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
 
     else:
-        await query.message.reply_text("Не найдено больше постов.")
+        await update.reply_text("Не найдено больше постов.")
 
 # Обработка фотографий
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -154,11 +152,18 @@ async def send_similar_posts(update: Update, photo_url):
     # Получаем вектор изображения пользователя
     user_vector = get_image_vector(photo_url)
 
+    if user_vector is None:
+        await update.message.reply_text("Не удалось получить вектор для загруженного изображения.")
+        return
+
     for post in posts:
         post_vector = get_image_vector(post[1]['image_url'])
-        if post_vector is not None and user_vector is not None:
-            # Сравниваем векторы, здесь можно добавить вашу логику
-            if np.allclose(user_vector, post_vector):  # Пример, сравниваем, если векторы близки
+        if post_vector is not None:
+            # Сравниваем векторы, используя косинусное расстояние
+            distance = cosine(user_vector, post_vector)
+            logger.info(f"Сравнение изображений: расстояние {distance}")
+
+            if distance < 0.1:  # Порог для схожести
                 similar_posts.append(post)
 
     if similar_posts:
@@ -166,8 +171,7 @@ async def send_similar_posts(update: Update, photo_url):
         for post in similar_posts:
             # Обновляем индекс, чтобы не было дублирования
             current_index = posts.index(post)
-            await send_post(update)  # Изменено для передачи query вместо update
-
+            await send_post(update)
     else:
         await update.message.reply_text("Похожие посты не найдены.")
 
@@ -187,11 +191,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'next':
         current_index += 1
-        await send_post(query)  # Передаем query
+        await send_post(query.message)
     elif query.data == 'previous':
         if current_index > 0:
             current_index -= 1
-        await send_post(query)  # Передаем query
+        await send_post(query.message)
 
 # Основная функция
 def main() -> None:
