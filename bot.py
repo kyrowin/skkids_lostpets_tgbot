@@ -112,7 +112,7 @@ async def send_post(update: Update):
         if post[1].get('image_url'):
             media.append(InputMediaPhoto(media=post[1]['image_url'], caption=text))
         else:
-            await update.reply_text("Пост без изображения.")
+            await update.message.reply_text("Пост без изображения.")
             return  # Прерываем выполнение, если нет изображения
 
         # Кнопки навигации
@@ -126,11 +126,12 @@ async def send_post(update: Update):
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.reply_media_group(media)  # Измените на query.message.reply_media_group(media) для кнопок
-        await query.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
+        # Здесь используем update.message для отправки медиа-группы
+        await update.message.reply_media_group(media)
+        await update.message.reply_text(f"Тип животного: {post[1].get('animal_type', 'Неизвестно')}", reply_markup=reply_markup)
 
     else:
-        await update.reply_text("Не найдено больше постов.")
+        await update.message.reply_text("Не найдено больше постов.")
 
 # Обработка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
