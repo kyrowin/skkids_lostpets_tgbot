@@ -13,8 +13,8 @@ from torchvision.models import resnet50
 import numpy as np
 from scipy.spatial.distance import cosine  # Импортируем косинусное расстояние
 
-VK_API_TOKEN = 'd78e593cd78e593cd78e593cb9d4ac02dddd78ed78e593cb0afbaaeab5a89d75de7db1d'
-TELEGRAM_BOT_TOKEN = '7582841082:AAGoI62LcnGQxPdEHkkZ-F55CmqW3AVKhXY'
+VK_API_TOKEN = 'YOUR VK API TOKEN'
+TELEGRAM_BOT_TOKEN = 'YOUR TELEGRAM BOT TOKEN'
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
